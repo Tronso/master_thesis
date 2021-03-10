@@ -1,0 +1,189 @@
+%!TEX root=../master_thesis.tex
+\chapter{Related Work}
+The goal of this work is to replace Riak Core's implementation of Consistent Hashing with \ac{RS}.
+Therefore one section of this chapter will explore different data partitioning algorithms.
+Since Riak Core's \ac{RPS} is closely related to Consistent Hashing and cannot be reused, another important aspect of related work are \acp{RPS}.
+Concluding the chapter is an overview of other distributed key-value stores and how they handle partitioning and replication.
+
+\section{Data Partitioning Algorithms}
+Data partitioning algorithms decide how the data that is to be stored is distributed on different \glspl{node}.
+A common approach is to use a key as the input of a hash function and apply the partitioning algorithm on the hash space.
+
+\subsection{Consistent Hashing}
+\label{sec:consistent_hashing}
+Consistent Hashing was introduced by Karger et al.\cite{Karger1997} as a tool to allow for different views of a \gls{node} \gls{cluster} in which placement of objects is determined by hashing.
+Different implementations of Consistent Hashing can be found in distributed systems including \ac{RCL}\cite{DeCandia2007}\cite{Lakshman2010}\cite{Fritchie2010}.
+Karger et al. motivate the technique by explaining that clients usually do not see every \gls{node} in a cluster.
+Therefore using an ordinary hash function would lead to different mappings of objects to \glspl{node} for different clients.
+
+They define a construction of a family of hash functions that overcomes those problems.
+Virtual \glspl{node} and objects are randomly placed on the unit interval by independent and uniform random functions.
+The hash function then assigns an object to the nearest \gls{node} on the unit interval.
+
+Implementation-wise the authors propose using balanced binary trees storing a mapping of \glspl{section} to \glspl{node}.
+To improve runtime the interval is divided into $\kappa C\log(C)$ equal length \glspl{section}, where $C$ is the upper bound of \glspl{node} and $\kappa$ is some constant.
+Each \gls{node} is also replicated  $\kappa \log(C)$ times and mapped randomly to the unit interval.
+Each \gls{section} is assigned its own search tree with a low expected lookup-time.
+To avoid shrinking the \glspl{section} with a growing number of \glspl{node} their length is chosen as $\frac{1}{2^x} \leq \frac{1}{\kappa C\log(C)}$ where $x$ is chosen as the maximum fulfilling the inequation.
+The \glspl{section} are bisected with the growing number of \glspl{node} and are therefore already of half length once the next power of 2 is reached.
+
+
+\section{Replication Placement Strategies}
+\acp{RPS} decide on which \glspl{node} replicas of an object are stored.
+The strategies considered in this section are all able to take heterogeneity of \glspl{node} into account.
+Often a preference list containing \glspl{node} ranked by how suitable they are to store the replica is either directly created or can be derived as the result of applying the strategy.
+
+\subsection{Adaptive Data Replication Strategy}
+\ac{ADRS}\cite{Mansouri2016} is a replication management system proposed by Mansouri that uses multi-objective optimization to create a replication distribution that fulfills given requirements.
+The model considers $m$ heterogeneous data \glspl{node} and $n$ different data entries of equal size that are to be distributed and replicated on the data \glspl{node}.
+Furthermore the access rate of the data entries have a Poisson distribution and data entries are immutable.
+
+The cost function of the optimization problem considers mean service time (MST), load variance (LV), storage usage (SU), failure probability (FP), and Latency (L) which are computed from different metrics and hardware specifications.
+The objectives of the optimization can be weighted with weights $w_1,...,w_5$ and therefore the cost function is $c = w_1\cdot\text{MST} + w_2\cdot\text{LV} + w_3\cdot\text{SU} + w_4\cdot\text{FP} + w_5\cdot\text{L}$.
+The replica is stored on the data \gls{node} with the minimal cost function.
+
+\ac{ADRS} also considers the free space of the data \glspl{node}.
+If a data entry cannot be placed on the \gls{node} with minimal cost it replaces data points already stored on the \gls{node}.
+To this end all existing data points on the \gls{node} are evaluated by their number of accesses $NA$, availability $P$, time between the last access $LA$ and current time $CT$, and data size $S$.
+This function is therefore
+\[
+V = \frac{w_1\cdot NA + w_2\cdot P}{w_3\cdot(CT - LA) + w_4\cdot S}
+\]
+and data entries are ordered ascending by this value.
+Files are then deleted in this order until the new data entry can be placed on the \gls{node}.
+
+
+\subsection{Chain Replication}
+\label{sec:chain_replication}
+Chain Replication\cite{Renesse2004} is a replication-management protocol for storage services that offers strong consistency guarantees.
+It offers a simple interface that supports queries and updates, of which writes are a special instance, on object IDs.
+The \glspl{node} in the \gls{cluster} are assumed to be \emph{fail-stop} which means failure is detected and \glspl{node} stop instead of continuing in an erroneous state.
+
+A chain of length $N$ consists of a head (virtual) \gls{node} $H$, a tail (virtual) \gls{node} $T$ and $N-2$ \glspl{node} $S_i$ in between.
+In normal operation the update requests are sent to the head and queries are sent to and answered by the tail.
+The result of an update request is computed on the head \gls{node} and the result is propagated along the chain.
+Queries are directly answered with the current replication of the object on the tail \gls{node}.
+
+To handle chain failures and reconfiguration a master server is used to update other members on the new configuration.
+If a \gls{node} fails it is removed from the chain.
+In the case of the head its successor is assigned as the new head and all requests not yet forwarded are lost.
+A failure of the tail node is handled by assigning its predecessor the tail role without losing any information.
+The removal of any other \glspl{node} in the chain is handled by making its successor the successor of its predecessor.
+Additionally all requests forwarded to it by its predecessor are again forwarded to its successor before it resumes operation.
+
+A new \gls{node} is always added at the end of the chain and assumes the tail role.
+The old tail forwards all replications to the new \gls{node}.
+Queries to the old tail are forwarded until the clients are informed of the new configuration.
+The distribution of \glspl{node} to chains is not handled by this protocol and left to the implementing system.
+Example setups can be found in an analysis of Hibari\cite{Fritchie2010} (\cref{sec:hibari}).
+
+
+\subsection{Redundant Share}
+Redundant Share\cite{Brinkmann2007} is a storage virtualization that supports heterogeneous \glspl{cluster} while balancing loads.
+It distributes $m$ data blocks of uniform size to $n$ \glspl{node} of heterogeneous capacity $b_0,...,b_{n-1}$ with $k$ redundant copies.
+The $k$ copies of the data blocks are guaranteed to be stored on $k$ different \glspl{node}.
+
+The algorithm iterates over the \glspl{node} ordered descending by their capacity.
+For each \gls{node} a random process decides if it stores the primary copy of the data block.
+The probability that \gls{node} $i$ stores the primary copy is computed under the assumption that the other copies are fairly distributed to \glspl{node} $i+1,...n$:
+\[
+\check c_i = \frac{2\cdot b_i}{\sum\limits_{j=i}^{n-1}b_j}
+\]
+This probability is then compared to the result of the random value generated from the address of the data block and the \gls{node} identifier, for example by applying Consistent Hashing.
+While there are more than 2 copies to be distributed the algorithm is called recursively.
+When there are only 2 copies left one is again assigned as a primary copy to \gls{node} $i$ as before and the last copy is then placed with a fair distribution strategy in \gls{node} $i+1$, ... \gls{node} $n-1$.
+In the special case that $\check c_i < 1$ and $\check c_{i+1} > 1$ the capacity $b_{i+1}$ is adjusted to a capacity $b^*$ that is ensures the \gls{node} still receives the correct load.
+
+To reduce the runtime from $\mathcal{O}(n)$ to $\mathcal{O}(k)$  in a trade-off with space the probability for the first copy is computed with a single hash function $p_i = \check c_i\cdot\prod\limits_{j=0}^{i-1}(1-\check c_j)$ which is scaled to $\sum\limits_{i=0}^{n-1}p_i = 1$.
+For every other copy $\mathcal{O}(n)$ hash functions are used.
+The hash function is chosen by which \gls{node} $i$ is chosen in the previous step and computes the \glspl{node} out of $i+1,..,n-1$ for the next copy.
+
+
+\section{Distributed Key-Value Stores}
+\ac{RCL} originally stems from the Riak distributed key-value store.
+Since \ac{RCL} implements core functionalities of Riak, we take a look into the workings of other distributed key-value stores.
+A special focus lies on how the data space is partitioned and mapped to physical \glspl{node}, replications are distributed among the \glspl{node}, and how those replicas are retrieved.
+
+\subsection{Dynamo}
+\label{sec:dynamo}
+Dynamo\cite{DeCandia2007} is an eventually consistent key-value store developed by Amazon and focuses on high availability and scalability.
+The system is highly decentralized and its interface only considers a single primary key.
+Both partitioning and replication of data is handled by an implementation of Consistent Hashing\cite{Karger1997} (see \cref{sec:consistent_hashing}).
+
+Assumptions and requirements of Dynamo are the following:
+\begin{itemize}
+\item Queries only consist of reads and writes on a single binary object that are smaller than 1 MB.
+\item Dynamo only provides a weaker consistency in trade for high availability and no isolation guarantees at all.
+\item The environment Dynamo operates in is non-hostile and there are no security requirements.
+\end{itemize}
+
+Dynamo's implementation of Consistent Hashing treats the hash space of a hash function as a circular ring where the smallest and biggest value are neighbors.
+To determine which \gls{node} is responsible for a key, $Q$ virtual \glspl{node} are assigned at equally distributed positions on the ring.
+The same number of virtual \glspl{node} belong to each physical \gls{node}.
+A \gls{node} is responsible for the range between its position and the position of its predecessor which in turn defines $Q$ same size \glspl{section}.
+When the hash function is applied to a key the responsible \gls{node} is identified via the next greater position of a \gls{node} on the ring.
+When a \gls{node} leaves the system, its \glspl{section} are distributed equally to the remaining nodes.
+When a node enters the system, it takes \glspl{section} from the other nodes until they are equally distributed again.
+
+Dynamo's replication functionality makes use of its implementation of Consistent Hashing.
+The system is configured to replicate each data entry at $N$ physical \glspl{node}.
+The \gls{node} responsible for the replication is the one first responsible for the key according to the partitioning algorithm.
+Using the ring structure the next $N-1$ \glspl{section} whose owning physical node is not already in the preference list are used as storage \glspl{node} for the replicas.
+Those \glspl{node} are called \emph{preference list} and usually contain more than $N$ \glspl{node} to make it more robust against failures.
+Therefore a \emph{put}-operation hashes the given key to the coordinator \gls{node} and places the data to the first $N$ healthy \glspl{node} in the preference list.
+Failed \glspl{node} are skipped but are marked with a \emph{hinted handoff} to ensure that they finally receive the replica in case of a recovery.
+Consistency is provided with the help of data versioning via vector-clocks per data entry.
+In a quorum-like manner the minimum number of successful reads $R$ and writes $W$ can be configured.
+If less than $W-1$ \glspl{node} respond to the replication call, the $put$-operation fails.
+Analogous, a $get$-operation determines the coordinator \gls{node} and queries the preference list for $R$ replicas.
+If it detects differing versions by comparing vector clocks all versions are returned.
+
+
+\subsection{Cassandra}
+Cassandra\cite{Lakshman2010} is an eventually consistent key-value store developed and used by Facebook and is nowadays maintained as an open-source project by Apache\cite{Cassandra2016}.
+It is a decentralized distributed structured storage system that was developed with strict requirements on performance, reliability and efficiency in mind.
+It especially focuses on a high scalability.
+Failures are expected to occur regularly instead of only occasional.
+Its data model is a key-value model where the key can be of arbitrary length and the value is the row of a multi dimensional table.
+
+The partitioning algorithm is quite similar to Dynamo's implementation of Consistent Hashing(see \cref{sec:dynamo}).
+Instead of just distributing \glspl{node} evenly on the ring Cassandra in addition keeps load information and moves \glspl{node} with free capacities on the ring to balance loads similar to Chord\cite{Stoica2003}.
+At the start of a \gls{cluster} a \gls{node} chooses a random position on the ring and acts as a seed.
+When a new node enters it is placed such that it splits the \gls{section} of a \gls{node} under heavy load.
+That \gls{node} is then responsible to transfer the affected data to the new \gls{node}.
+A failure of a \gls{node} is treated as transient and no action is taken to avoid unnecessary re-balancing and \gls{section} assignment.
+
+Since the partitioning algorithm is close to Dynamo's the same is true for the replication strategy.
+$N$ is configurable as the number of replications.
+In addition to the simple setting ``Rack-Unaware'' that uses the $N-1$ successor \glspl{node} on the ring as the preference list there are two settings called ``Rack Aware'' and ``Datacenter Aware''.
+For those settings the systems adapts a more centralized approach as one \gls{node} is elected as a leader using \emph{Zookeeper}\cite{Hunt2010}.
+This leader is polled by other \glspl{node} to get an assignment of a maximum of $N-1$ ranges they are responsible for.
+In contrast to Dynamo there is no mention of minimal reads $R$ or writes $W$.
+
+
+\subsection{Hibari DB}
+\label{sec:hibari}
+Hibari DB\cite{Hibari2015} is a strongly consistent key-value store developed by Gemini Mobile Technologies/Cloudian and left to be maintained by the open-source community.
+In addition to the application documentation details about the system are described in an analysis by S.L. Fritchie\cite{Fritchie2010}.
+Its strengths are fault tolerance, high availability and the ability to update multiple keys in a single operation.
+It is conceptualized for a single data center and does not handle wide area network latency well.
+An admin server is used to monitor, repair, and configure the \gls{cluster}.
+To partition the data to the physical \glspl{node} a variant of Consistent Hashing is used.
+Based on this partitioning a chain replication (see \cref{sec:chain_replication}) algorithm distributes the replicas.
+
+In Hibari's implementation of Consistend Hashing MD5 is used as the hash algorithm.
+The hash space is mapped to the unit interval $[0, 1)$ which is divided into an arbitrary number of \glspl{section}.
+Each \gls{section} represents a chain and a single chain can own multiple \glspl{section}.
+The size of the \glspl{section} is determined by a relative weight assigned to the chain which represents the capacities of the physical \glspl{node} participating.
+When the structure of the \gls{cluster} changes new relative weights are assigned and the \glspl{section} are recalculated in a way that minimizes key migration.
+Keys no longer belonging to their former \gls{section} need to migrate.
+To this end the old \gls{section} map is kept until the key migration is done.
+During key migration the system is still operational.
+To achieve this the set of keys is separated into consecutive sweep windows of which one contains those keys that are currently migrating.
+Requests on keys in the currently active sweep window are deferred and forwarded to the correct chain when migration on that window is done.
+
+Replication of the keys to physical \glspl{node} is handled by chain replication.
+The setup of the chains can be freely configured.
+The standard chain assignment uses the physical \glspl{node} in a ring and uses each \gls{node} on the ring as a head of a chain and take the next $N-1$ \glspl{node} as the rest.
+Another possibility of building chains of length $N$ is striping each \gls{node} into $N$ virutal \glspl{node}.
+$N$ physical \glspl{node} are grouped together and the virtual \glspl{node} are distributed diagonally over the $N$ chains such that each physical \gls{node} acts as the same number of heads, tails, and middle parts each.

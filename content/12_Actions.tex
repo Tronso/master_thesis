@@ -1,0 +1,807 @@
+%!TEX root=../master_thesis.tex
+\chapter{Actions}
+
+\section{General Actions}
+\begin{actionbox}{Send Ring}{send_ring}
+	\begin{action}
+		\call{riak_core_gossip:send_ring/2} If the sending node owns gossip tokens it sends its ring to another node where both rings are reconciled.
+		\begin{action}
+			\call{riak_core_ring_manager:get_raw_ring/0} Retrieve the raw ring that is to be sent out.
+			\call[\actiontag{action}]{Check Tainted} See Action \ref{action:check_tainted}.
+			\call[\actiontag{rpc}]{riak_core_gossip:reconcile_ring/1} Reconcile the received ring with the local ring.
+			\begin{action}
+				\call[\actiontag{action}]{Transform Ring, alt=reconciled_ring} Apply the reconcile callback to the local ring. See Action \ref{action:transform_ring}.
+				\begin{action}
+					\call[\actiontag{callback}\actiontag{action}]{Reconcile} See Action \ref{action:reconcile}.
+				\end{action}
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Transform Ring (alt = new\_ring | reconciled\_ring | ignore)}{transform_ring}
+	\begin{action}
+		\call{riak_core_ring_manager:ring_trans/2} Transforms the current ring with the given callback.
+		Depending on the callback the new state is gossiped randomly or deterministic or only set locally.
+		\begin{action}
+			\call[\actiontag{callback}]{Callback} The transformation callback that is applied to the ring. The result tuple contains the alt-value.
+			\call[\actiontag{action}]{Check Tainted} See Action \ref{action:check_tainted}.
+			\call[\actiontag{action}]{Set Ring} Sets the new ring in the ETS table.
+			See Action \ref{action:set_ring}.
+			\call{riak_core_ring:update_meta/3} Updates the meta entry and its timestamp if the value differs.
+			\call[\actioninfo{ignored for alt=set\_only}]{riak_core_ring_events:ring_update/1} Applies the update callback to the current ring.
+			\call[\actioninfo{alt=new\_ring $\to$ random; alt=set\_only $\to$ ignore; alt=reconciled\_ring $\to$ not random}]{riak_core_gossip:\{random_\}recursive_gossip/2} Gossips the state to the children of a given node.
+			 For random recursive gossip the gossiping node is chosen at random.
+			\begin{action}
+				\call{riak_core_ring:active_members/1} Retrieves all members whose status is joining, valid, leaving, or exiting.
+				\call[\actioninfo{for each active member}\actiontag{action}]{Send Ring} See Action \ref{action:send_ring}.
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Check Tainted}{check_tainted}
+	\begin{action}
+		\call{riak_core_ring:check_tainted/2} Checks if the tainted-flag is set in the meta data.
+		Either stops the application with a given error message or just logs the error message when the ring is tainted.
+		\begin{action}
+			\call[\actioninfo{If ring is tainted}]{riak_core:stop/1} Stops the application and logs the given reason.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Ring Changed}{ring_changed}
+	\small
+	\begin{action}
+		\call{riak_core_claimant:ring_changed/2} Applies changes to the ring and informs other nodes.
+		\begin{action}
+			\call{riak_core_ring:members/2} Check for joining members.
+			\call{riak_core_ring:members/2} Check for valid and leaving members.
+			\call{riak_core_ring:claimant/1} Retrieve claimant to check if it is a valid member.
+			\call{riak_core_ring:set_claimant/2} If the claimant is missing set the next claimant.
+			\call{riak_core_ring:increment_ring_version/2} Update the ring version if the claimant was changed.
+			\call{riak_core_ring:members/2} Find joining members.
+			\call{riak_core_ring:get_member_meta/3} Retrieve meta to filter for auto joining nodes.
+			\call{riak_core_ring:claimant/1} Retrieve current claimant.
+			\call{riak_core_ring:set_member/5} Set all joining nodes as valid members.
+			\call{riak_core:cluster_name/1} Retrieve current cluster name.
+			\call{riak_core_ring:members/2} Retrieve exiting members.
+			\call{riak_core_ring:members/2} Retrieve invalid members.
+			\call[\actiontag{action}]{Refresh Ring} Inform each exiting node and refresh their ring to a fresh ring only containing themselves.
+			See Action \ref{action:refresh_ring}
+			\call{riak_core_ring:claimant/1} Retrieve current claimant to check if the local node is the claimant.
+			\call{riak_core_ring:pending_changes/1} Retrieve pending changes from old state.
+			\call{riak_core_ring:pending_changes/1} Retrieve pending changes from changed state.
+			\call{riak_core_ring:cluster_name/1} Find out if the cluster name is set.
+			\call[\actiontag{rpc}]{riak_core_ring_manager:set_cluster_name/1} If the cluster name is not set, set the cluster name for every member.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Refresh Ring}{refresh_ring}
+	\begin{action}
+		\call{riak_core_ring_manager:refresh_ring/2} Refreshes the ring on the given node to a ring containing only that node and puts the result into the ETS table and ring file.
+		\begin{action}
+			\call{riak_core_ring:fresh/0} Create a new ring state.
+			\begin{action}
+				\call{chash:fresh/2} Create a new chash structure with the given node as the owner.
+			\end{action}
+			\call[\actiontag{action}]{Set Ring} Sets the ring in the ETS table.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Reconcile}{reconcile}
+	\begin{action}
+		\call{riak_core_gossip:reconcile/2} Reconciles two diverged rings into one.
+		\begin{action}
+			\call{riak_core_ring:reconcile_names/2} If one name is undefined the result is undefined, else a term consisting of both names is returned.
+			\call{riak_core_ring:owner_node/1} Retrieve the owner of the other ring.
+			\call{riak_core_ring:reconcile_members/2} Reconciles members and their status of both rings using vector clocks.
+			\call{riak_core_ring:cluster_name/1} Get first ring's name for comparison.
+			\call{riak_core_ring:cluster_name/1} Get other ring's name for comparison.
+			\call{riak_core_ring:member_status/2} Get status of other ring's owner before reconciliation.
+			\call{riak_core_ring:reconcile/2} Merges all ring attributes.
+			\begin{action}
+				\call[\actiontag{action}]{Check Tainted} Check other ring tainted.
+				See Action \ref{action:check_tainted}.
+				\call[\actiontag{action}]{Check Tainted} Check my ring tainted.
+				See Action \ref{action:check_tainted}.
+			\end{action}
+			\call{riak_core_ring:member_status/2} Get status of other ring's owner in reconciled ring.
+			\call{riak_core_ring:ring_changed/2} Apply changes to the ring.
+			\begin{action}
+				\call[\actiontag{action}]{Check Tainted} See Action \ref{action:check_tainted}.
+				\call[\actiontag{action}]{Ring Changed} Apply changes to the ring.
+				See Action \ref{action:ring_changed}.
+			\end{action}
+			\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Set Ring}{set_ring}
+	\begin{action}
+		\call{riak_core_ring_manager:set_ring/2} Set the ring in the ETS table.
+		\begin{action}
+			\call{riak_core_ring:set_tainted/1} Set the ring as tainted to check for leaks over gossip.
+		 	\call{riak_core_ring:chash/1} Get the chash from the ring.
+		 	\call{chashbin:create/1} Compute the chashbin from the ring.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+
+\begin{actionbox}{Do Claimant}{do_claimant}
+	\begin{action}
+		\call{riak_core_claimant:do_claimant/5} Handle joining nodes and add them to the ring.
+		If there are no joining nodes apply transfers to the ring.
+		Finally handle nodes marked as exiting and remove them from the ring.
+		\begin{action}
+			\call{riak_core_ring:members/2} Check if there are any members joining the ring.
+			\call{riak_core_ring:members/2} Get all active members on the ring.
+			\call{riak_core_ring:claimant/1} Retrieve the current claimant.
+			\call{riak_core_ring:set_claimant/2} Set the next claimant in the list if it is missing.
+			\call{riak_core_ring:increment_ring_version/2} Increment the ring version after the claimant update.
+			\call{riak_core_ring:members/2} Get all members of the ring.
+			\call{riak_core_ring:get_member_meta/3} Filter members for auto-joining nodes.
+			\call[\actiontag{action}]{Handle Joining} Handle all of the auto-joining nodes. See Action \ref{action:handle_joining}.
+			\call[\actiontag{action}]{Update Ring Resizing} Update the ring with the changes planned by the claimant. See Action \ref{action:update_ring_resizing}.
+			\call{riak_core_ring:claimant/1} Retrieve current claimant and check if the local node is the claimant.
+			\call{riak_core_ring:members/2} Retrieve all members marked as exiting.
+			\call{riak_core_ring:clear_member_meta/3} Remove meta for exiting nodes.
+			\call{riak_core_ring:set_member/5} Set exiting nodes as invalid members.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Compute Resize}{compute_resize}
+	\small
+	\begin{action}
+		\call{riak_core_claimant:maybe_compute_resize/2} Compute the resized ring and schedule transfers.
+		After this validate the future ring by comparing owners and members.
+		\begin{action}
+			\call{riak_core_ring:num_partitions/1} Retrieve size of the original ring.
+			\begin{action}
+				\call{chash:size/1} Retrieve number of partitions.
+			\end{action}
+			\call{riak_core_ring:num_partitions/1} Retrieve size of the resized ring.
+			\begin{action}
+				\call{chash:size/1} Retrieve number of partitions.
+			\end{action}
+			\call{riak_core_ring:future_ring/1} Compute ring resulting from applying pending changes to the resized ring.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all member nodes.
+				\call{chash:nodes/1} Retrieve all member nodes.
+			\end{action}
+			\call{riak_core_ring:num_partitions/1} Check size of the original ring for comparison.
+			\begin{action}
+				\call{chash:size/1} Retrieve number of partitions.
+			\end{action}
+			\call{riak_core_ring:num_partitions/1} Check size of the resized ring for comparison.
+			\begin{action}
+				\call{chash:size/1} Retrieve number of partitions.
+			\end{action}
+			\call{riak_core_ring:all_owners/1} Retrieve all owners of the original ring.
+			\call{riak_core_ring:index_owner/1} Retrieve the owner of an index on the resized ring to schedule a transfer from the original to the future owner.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners.
+			\end{action}
+			\call{riak_core_ring:preflist/2} Compute a list of responsible nodes for a given index.
+			\begin{action}
+				\call{chash:successors/2} Retrieve all successors wrapping around the ring.
+			\end{action}
+			\call{riak_core_ring:schedule_resize_transfer/3} Determine the first resize transfer a partition should perform with the goal of ensuring the transfer will actually have data to send to the target.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners to compute an index owner of the future ring.
+				\call{chash:nodes/1} Retrieve all owners to compute an index owner.
+				\call{chash:nodes/1} Retrieve all owners to schedule a resize transfer.
+			\end{action}
+			\call{riak_core_ring:set_pending_resize/2} Schedule a resize operation from the original ring to the ring after resizing and transferring nodes.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve members of the original ring.
+				\call{chash:nodes/1} Retrieve members of the next ring.
+			\end{action}
+			\call{riak_core_ring:future_ring/1} Retrieve new future ring for validation.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners of the next ring.
+				\call{chash:nodes/1} Retrieve all owners to get a list of indices.
+			\end{action}
+			\call{riak_core_ring:all_owners/1} Retrieve all original owners.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners.
+			\end{action}
+			\call{riak_core_ring:all_owners/1} Retrieve all future owners.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners.
+			\end{action}
+			\call{riak_core_ring:all_members/1} Retrieve all original members.
+			\call{riak_core_ring:all_members/1} Retrieve all future members.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Plan}{plan}
+	\begin{action}
+		\call{riak_core_claimant:plan/0} Compute the ring resulting when applying the pending changes and set it as the provisional ring to check against when actually committing changes.
+		\begin{action}
+			\call{riak_core_ring_manager:get_raw_ring/0} Retrieve the currently installed ring.
+			\call{riak_core_ring:ring_ready/1} Check if the ring is ready for changes.
+			\call{riak_core_ring:members/2} Retrieve joining members.
+			\call[\actiontag{action}]{Apply Changes} Apply the pending changes to the ring. See Action \ref{action:apply_changes}.
+			\call{riak_core_ring:members/2} Retrieve joining nodes.
+			\call{riak_core_ring:claimant/1} Retrieve current claimant id.
+			\call{riak_core_ring:set_member/5} Set the joining members to valid.
+			\call[\actiontag{action}]{Do Claimant} Update the ring according to the pending changes and set transfer markers. See Action \ref{action:do_claimant}.
+			\call[\actiontag{action}]{Compute Resize} Compute the ring ownership after a resize and schedule transfers. See Action \ref{action:compute_resize}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}[height=\textheight]{Apply Changes}{apply_changes}
+	\small
+	join
+	\begin{action}
+		\call{riak_core_ring:add_member/3} Add the node to the member list as joining.
+	\end{action}
+	leave
+	\begin{action}
+		\call{riak_core_ring:all_members/1} Retrieve the member list to check if the leaving node is a member.
+		\call{riak_core_ring:leave_member/3} Mark the node as leaving.
+	\end{action}
+	remove
+	\begin{action}
+		\call{riak_core_ring:all_members/1} Retrieve the member list to check if the node to be removed is a member.
+		\call{riak_core_ring:remove_member/3} Mark the node as removed.
+	\end{action}
+	replace
+	\begin{action}
+		\call{riak_core_ring:leave_member/3} Mark the replaced member as leaving. Replacement happens when the claimant updates the ring the next time.
+	\end{action}
+	force\_replace
+	\begin{action}
+		\call{riak_core_ring:indices/2} Get all indices on the ring.
+		\call{riak_core_ring:add_member/3} Add the replacing node.
+		\call{riak_core_ring:change_owners/2} Transfer ownership from the replaced to the replacing node.
+		\call{riak_core_ring:remove_member/3} Remove the replaced member.
+		\call{riak_core_ring:is_resizing/1} Check if there is currently a resize operation ongoing.
+		\call{riak_core_ring:is_post_resize/1} Check if the resize operation has finished.
+		\call{riak_core_ring:reschedule_resize_transfers/3} Abort the ongoing resize transfers to enable the replacement.
+		\call{riak_core_ring:resized_ring/1} Compute the ring after the resize.
+		\call{riak_core_ring:set_chash/2} Assign the chash structure of the resized ring to the current ring.
+		\call{riak_core_ring:indices/2} Get a list of indices in the resized ring.
+		\call{riak_core_ring:change_owners/2} Replace nodes in the resized ring.
+		\call{riak_core_ring:chash/1} Retrieve the chash structure after reassigning indices.
+		\call{riak_core_ring:set_resized_ring/2} Set the chash structure in the original ring as resized.
+		\call{riak_core_ring:claimant/1} Retrieve the claimant of the cluster.
+		\call{riak_core_ring:increment_ring_version/2} Update the ring version of the ring after the resize.
+	\end{action}
+	resize
+	\begin{action}
+		\call{riak_core_ring:resize/2} Start the resize operation on the ring.
+		\begin{action}
+			\call{chash:update/3} Reassign a section.
+			\call{chash:fresh/2} Create a new chash structure with the new size.
+			\call{chash:nodes/1} Retrieve all members and check for consistency with the cluster state.
+		\end{action}
+	\end{action}
+	abort\_resize
+	\begin{action}
+		\call{riak_core_ring:set_pending_resize_abort/1} Abort an ongoing resize operation.
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Update Ring Resizing}{update_ring_resizing}
+	\begin{action}
+		\call{riak_core_claimant:maybe_update_ring/5} Install the future ring after an resizing operation is completed.
+		\begin{action}
+			\call{riak_core_ring:claimant/1} Check if the local node is the claimant.
+			\call{riak_core_ring:claiming_members/2} Check if there are any nodes claiming partitions.
+			\call{riak_core_ring:is_resize_complete/1} Check if an ongoing resize operation is completed.
+			\call{riak_core_ring:future_ring/1} Retrieve the ring resulting from applying all pending changes.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners of the next ring.
+				\call{chash:nodes/1} Retrieve all owners to get a list of indices.
+			\end{action}
+			\call{riak_core_ring:maybe_abort_resize/1} Abort an ongoing resize operation if it is scheduled to be aborted.
+			\call{riak_core_ring:increment_ring_version/2} Increment the version number of the ring.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Commit Staged}{commit_staged}
+	\begin{action}
+		\call{riak_core_claimant:maybe_commit_staged/2} Commit all staged changes.
+		\begin{action}
+			\call{riak_core_ring:member_status} Check that a node contained in a change is not invalid.
+			\call{riak_core_ring:member_status} In case of a replacement change check that the replacing node is joining.
+			\call[\actiontag{action}]{Apply Changes} Apply all filtered changes to the current ring. See Action \ref{action:apply_changes}.
+			\call[\actiontag{action}]{Handle Joining} Mark joining nodes as valid. See Action \ref{action:handle_joining}.
+			\call[\actiontag{action}]{Do Claimant} Compute necessary transfers between current and next ring. See Action \ref{action:do_claimant}.
+			\call[\actiontag{action}]{Compute Resize} Compute the resized ring. See Action \ref{action:compute_resize}.
+			\call{riak_core_ring:claimant/1} Retrieve the current claimant to check if it is the local node.
+			\call{riak_core_ring:ring_ready/1} Check if the ring is ready for incoming operations.
+			\call{riak_core_ring:all_member_status/1} Get member status of the planned ring.
+			\call{riak_core_ring:all_member_status/1} Get member status of the next ring and compare it to the planned ring.
+			\call{riak_core_ring:all_owners/1} Get all owners of the planned ring.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners.
+			\end{action}
+			\call{riak_core_ring:all_owners/1} Get all owners of the next ring and compare it to the planned ring.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all owners.
+			\end{action}
+			\call{riak_core_ring:pending_changes/1} Get the pending changes of the planned ring.
+			\call{riak_core_ring:pending_changes/1} Get the pending changes of the next ring and compare it to the planned ring.
+			\call{riak_core_ring:increment_vclock/2} If the changes can be committed increment the vector clock.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Start Cluster}
+\begin{actionbox}{Start Cluster}{start_cluster}
+	\begin{action}
+		\call{riak_core_app:start/2} is the entry point to start the application.
+		It ensures all applications it depends on are started, reads or creates the ring state directory, starts the main supervisor and cascading all other supervisors, and adds the event handler to the riak core ring events.
+		\begin{action}
+			\call{riak_core_util:start_app_deps/1} Ensures that all applications listed in the dependencies are started and starts them if they are not.
+			\call{riak_core_sup:start_link/0} Starts the riak core supervisor.
+			Subsequently starts other supervisor processes.
+			\begin{action}
+				\call[\actiontag{action}]{Start System Processes} Starts all processes whose supervisor tree roots in the riak core supervisor.
+				See Action \ref{action:start_system_processes}.
+			\end{action}
+			\call{riak_core_ring_events:add_guarded_handler} Registers the riak core ring handler.
+			\begin{action}
+				\call{riak_core:add_guarded_event_handler/2} Adds the event handler to the supervisor.
+				\begin{action}
+					\call{riak_core_eventhandler_sup:start_guarded_handler/4} Starts the supervised event handler as a child.
+					\begin{action}
+						\call{riak_core_ring_handler:start_link/0}  Initializes the ring handler and starts vnodes if they are not yet started.
+						\begin{action}
+							\call{riak_core_ring_manager:get_my_ring/1} Retrieves the current ring.
+							\call{riak_core:vnode_modules/0} Retrieves the modules with the vnode behavior.
+							\call{riak_core_ring:ring_ready/1} Checks if the ring is ready for operatins.
+							\call{riak_core_ring:future_indices/2} Retrieves indices belonging to the local node in the future ring.
+							\call{riak_core_ring:member_status/2} Retrieves the local member status.
+							\call{riak_core_ring_manager:refresh_my_ring/0} If the local node is not on the ring, refresh it.
+						\end{action}
+					\end{action}
+				\end{action}
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Handle Joining}{handle_joining}
+	\begin{action}
+		\call{riak_core_claimant:maybe_handle_joining/2} Handle all nodes marked as joining and set them as a valid member.
+		\begin{action}
+			\call{riak_core_ring:members/2} If no list of joining nodes to handle is given, retrieve all joining members.
+			\call{riak_core_ring:claimant/1} Retrieve claimant to check if the local node is the current claimant.
+			\call{riak_core_ring:set_member/5} Set a joining node as valid member.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Commit}{commit}
+	\begin{action}
+		\call{riak_core_claimant:commit/0} Process all scheduled changes, apply them to the currently installed ring and install the updated ring.
+		\begin{action}
+			\call[\actiontag{action}]{Transform Ring, alt=new_ring | ignore} Transform the ring with the given callback and gossip the transformed ring. See Action \ref{action:transform_ring}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Start System Processes}{start_system_processes}
+	\begin{action}
+		\call{riak_core_vnode_sup:start_link/0} Start the supervisor for the local vnode.
+		\begin{action}
+			\call{riak_core_vnode:start_link/0} Initialize the vnode with index, module, forwarding, and timeout settings.
+		\end{action}
+		\call{riak_core_eventhandler_sup:start_link/0} Starts the eventhandler supervisor.
+		\call{riak_core_handoff_sup:start_link/0} Starts the handoff supervisor and subsequently the supervised handoff processes.
+		\begin{action}
+			\call[\actiontag{action}]{Initialize Handoff Components} Start all supervised handoff processes.
+			See Action \ref{action:initialize_handoff_components}.
+		\end{action}
+		\call{riak_core_ring_events:start_link/0} Start the eventhandler with the event handling callback function.
+		\begin{action}
+			\call{riak_core_ring_manager:get_my_ring/0} Retrieve the ring to check if the callback is applicable to it.
+		\end{action}
+		\call{riak_core_ring_manager:start_link/0} Starts the ETS, loads the ring file or creates a ring and sets the ring.
+		\begin{action}
+			\call[\actioninfo{If no ring file is found}]{riak_core_ring:fresh/0} Create a fresh ring if no ring file was found.
+		\end{action}
+		\call{riak_core_vnode_proxy_sup:start_link/0} Start the vnode proxy supervisor.
+		Subsequentially starts all proxies for the vnode modules for each index.
+		\begin{action}
+			\call{riak_core_ring_manager:get_raw_ring()} Retrieve the ring to compute indices.
+			\begin{action}
+				\call{chash:nodes/1} Retrieve all nodes.
+			\end{action}
+			\call{riak_core_ring:all_owners/1} Retrieve every node owning at least one index.
+			\call{riak_core:vnode_modules/0} Retrieve registered vnode modules.
+			\call[\actioninfo{For each registered node}]{riak_core_vnode_proxy:start_link/2} Start the vnode proxy for each node.
+		\end{action}
+		\call{riak_core_node_watcher_events:start_link/0} Start the node watcher events with an event callback function.
+		\begin{action}
+			\call{riak_core_node_watcher:services/0} Retrieve the node watcher services to test if the callback function is applicable.
+		\end{action}
+		\call{riak_core_node_watcher:start_link/0} Starts the node watcher and adds an update callback to the ring events.
+		\begin{action}
+			\call{riak_core_ring_events:add_sup_callback/1} Adds a callback to the ring events that is executed on events.
+		\end{action}
+		\call{riak_core_vnode_manager:start_link/0} Initializes the vnode manager and subsequently updates all vnode settings.
+		\begin{action}
+			\call[\actiontag{action}]{Initialize VNode Manager} Setup all existing vnodes to conform with management.
+			See Action \ref{action:initialize_vnode_manager}.
+		\end{action}
+		\call{riak_core_gossip:start_link/0} Initializes the gossip process with the default number of tokens.
+		\call{riak_core_claimant:start_link/0} Initialize the claimant with a random seed.
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Initialize Handoff Components}{initialize_handoff_components}
+	\begin{action}
+		\call{riak_core_handoff_receiver_sup:start_link/0} Starts the handoff receiver supervisor and subsequently the supervised child.
+		\begin{action}
+			\call{riak_core_handoff_receiver:start_link/0} Starts the handoff receiver process with timeout settings.
+		\end{action}
+		\call{riak_core_handoff_sender_sup:start_link/0} Starts the handoff sender supervisor and subsequently the supervised child.
+		\call{riak_core_handoff_listener_sup:start_link/0} Starts the handoff listener supervisor and subsequently the supervised child.
+		\begin{action}
+			\call{riak_core_handoff_listener} Registers the process with the module name and sets the IP address and port number.
+		\end{action}
+		\call{riak_core_handoff_manager:start_link/0} Initializes the handoff manager with an empty handoff list.
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Initialize VNode Manager}{initialize_vnode_manager}
+	\begin{action}
+		\call{riak_core_ring_manager:get_raw_ring_chashbin/0} Retrieves the ring and chashbin structure of the current ring.
+		\call{riak_core:vnode_modules/0} Retrieves registered vnode modules from the application settings.
+		\call{riak_core_vnode:get_mod_index/1} Retrieves the index of the vnode.
+		\call{riak_core_ring:completed_next_owners/2} Checks if the owner transfer is completed.
+		\call{riak_core_ring:complete_resize_transfers/3} Checks if the resize transfer is completed.
+		\call{riak_core_vnode:set_forwarding/2} Set vnode to forward requests.
+		\call{riak_core_ring:ring_ready/1} Checks if the ring is ready for operations.
+		\begin{action}
+			\call[\actiontag{action}]{Check Tainted} Check if the ring is marked tainted.
+			See Action \ref{action:check_tainted}.
+		\end{action}
+		\call{riak_core_ring:next_owner/2} Retrieves ownership change for an index.
+		\call{riak_core_ring:vnode_type/2} Determines if a vnode is fallback, future primary or resized primary.
+		\begin{action}
+			\call{chash:nodes/1} Retrieve all indices and owners.
+		\end{action}
+		\call{riak_core_ring:is_resizing/1} Check if the ring is currently resizing.
+		\call{riak_core_node_watcher:nodes/1} Retrieve all active nodes.
+	\end{action}
+\end{actionbox}
+
+\section{Join Cluster}
+\begin{actionbox}{Join Cluster}{join_cluster}
+	\begin{action}
+		\call{riak_core:join/\{1,4\}} is the entry point to join a cluster.
+		One can either specify just a remote node hosting the cluster the local node should join or specify the joining node and the cluster node together with join modes.
+		The joining node requests the remote node's ring and reconciles the ring locally.
+		Subsequently the ring is sent to remote node where it is again checked and reconciled.
+		After this has finished without errors, the updated ring is distributed via the gossip protocol to the other cluster members.
+		\begin{action}
+			\call[\actiontag{rpc}]{riak_core_ring_manager:get_raw_ring/0} Retrieves the ring structure of the cluster the node is about to join.
+			\call{ riak_core_ring_manager:get_raw_ring/0} Retrieves the ring of the joining node.
+			\call{riak_core_ring:num_partitions/1} Retrieves the number of partitions on the remote ring.
+			\begin{action}
+				\call{chash:size/1} Retrieves the number of entries in the chash structure.
+			\end{action}
+			\call{riak_core_ring:num_partitions/1} Retrieves the number of partitions in the local ring.
+			\begin{action}
+				\call{chash:size/1} Retrieves the number of entries in the chash structure.
+			\end{action}
+			\call{riak_core_ring:all_members/1} Checks if the local node is the only node in the ring.
+			\call{riak_core_ring:add_member/3} Add the local node to the remote ring.
+			\call{riak_core_ring:set_owner/2} Set the local node as the ring owner.
+			\call{riak_core_ring:update_member_meta/5} Sets the gossip version.
+			\call{riak_core_ring:update_member_meta/5} Sets the auto join setting.
+			\call[\actiontag{action}]{Set Ring} Set the new ring as the local ring.
+			See Action \ref{action:set_my_ring}
+			\call[\actiontag{action}]{Send Ring} Send the new ring to the cluster node.
+			See Action \ref{action:send_ring}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Set My Ring}{set_my_ring}
+	\begin{action}
+		\call{riak_core_ring_manager:set_my_ring/1} Set the local ring and notify the cluster.
+		\begin{action}
+			\call[\actiontag{action}]{Check Tainted} Checks if the ring is marked as tainted.
+			See Action \ref{action:check_tainted}.
+			\call[\actiontag{action}]{Set Ring} Set the ring in the ETS table. See Action \ref{action:set_ring}.
+			\call{riak_core_ring_events:ring_update/1} Notify listeners of the updated ring.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Leave Cluster}
+\begin{actionbox}{Leave Cluster}{leave_cluster}
+	\begin{action}
+		\call{riak_core:leave/0} Removes the local node from the ring if it is a valid node and not the only node.
+		\begin{action}
+			\call{riak_core_manager:get_raw_ring/0} Retrieve the ring to check the local nodes status.
+			\call{riak_core_ring:all_members/1} Retrieve nodes on the ring to check if there are other nodes.
+			\call{riak_core_ring:member_status/2} Check if the node is a valid member.
+			\call[\actiontag{action}]{Transform Ring, alt=new_ring} Transform the ring with the given callback and gossip the transformed ring.
+			\begin{action}
+				\call[\actiontag{callback}]{riak_core_ring:leave_member/3} Set the state of the node to leaving.
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Remove Node}
+\begin{actionbox}{Remove Node}{remove_node}
+	\begin{action}
+		\call{riak_core:remove\{_from_cluster\}/1} Removes a node from the cluster.
+		The difference to  \lstinline!remove_from_cluster! is a check if the node name is an atom.
+		\begin{action}
+			\call{riak_core_manager:get_raw_ring/0} Retrieve the ring to check the nodes status.
+			\call{riak_core_ring:all_members/1} Retrieve nodes on the ring to check if there are other nodes.
+			\call{riak_core_ring:member_status/2} Check if the node is a valid member.
+			\call[\actiontag{action}]{Transform Ring}Transform the ring with the given callback and gossip the transformed ring.
+			See Action \ref{action:transform_ring}.
+			\begin{action}
+				\call[\actiontag{callback}]{riak_core_ring:remove_member/3} Set the state of the node as invalid.
+				\call[\actiontag{callback}\actiontag{action}]{Ring Changed} Applies marked state changes to the ring and informs cluster members.
+				See Action \ref{action:ring_changed}.
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Navigate via riak\_core\_ring}
+
+\begin{actionbox}{Find Index for Key}{ring_find_index_for_key}
+	\begin{action}
+		\call{riak_core_ring_manager:get_my_ring/0} Retrieve the current ring used as input  to the library functions.
+		\call{riak_core_ring:responsible_index/2} Retrieve the index of the node responsible for a key.
+		\begin{action}
+			\call{chash:next_index/2} Retrieve the index of the next node.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Find Indices for Node}{ring_find_indices_for_node}
+	\begin{action}
+		\call{riak_core_ring_manager:get_my_ring/0} Retrieve the current ring used as input  to the library functions.
+		\call{riak_core_ring:my_indices/1} Retrieve all indices of the local node on the ring.
+		\begin{action}
+			\call{chash:nodes/1} Retrieve all indices with the respective owners.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Find Node for Index}{ring_find_node_for_index}
+	\begin{action}
+		\call{riak_core_ring_manager:get_my_ring/0} Retrieve the current ring used as input  to the library functions.
+		\call{riak_core_ring:index_owner/2} Retrieve the owning node for a given index.
+		\begin{action}
+			\call{chash:nodes/1} Retrieve all indices and their owner node
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Preference List}{ring_preference_list}
+	\begin{action}
+		\call{riak_core_ring_manager:get_my_ring/0} Retrieve the current ring used as input  to the library functions.
+		\call{riak_core_ring:preflist/2} Retrieve the preference list for a given key.
+		\begin{action}
+			\call{chash:successors/2} Retrieve all indices and their owning nodes starting from a given index and wrapping around the ring.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Navigate via chashbin}
+
+\begin{actionbox}{Find Index for Key}{chashbin_find_index_for_key}
+	\begin{action}
+		\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the local chash binary to use as input for the library functions.
+		\call{chashbin:responsible_index/2} Compute the index of the section responsible for a given key.
+		\begin{action}
+			\call{chash:ring_increment/1} Retrieve the offset from one section to the next.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Find Partition Index for Key}{chashbin_find_partition_index_for_key}
+	\begin{action}
+		\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the local chash binary to use as input for the library functions.
+		\call{chashbin:responsible_position/2} Compute the position of the section responsible for a given key.
+		The position of a section describes the index of the position on the ring starting from as opposed to the index resulting from the hash function.
+		\begin{action}
+			\call{chash:ring_increment/1} Retrieve the offset from one section to the next.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Find Ring Index for Key}{chashbin_find_ring_index_for_key}
+	\begin{action}
+		\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the local chash binary to use as input for the library functions.
+		\call{chashbin:index_owner/2} Retrieve the node owning the given index.
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Preference List}{chashbin_preference_list}
+	\begin{action}
+		\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the local chash binary to use as input for the library functions.
+		\call{chashbin:iterator/2} Retrieve an iterator starting at the given position.
+		\begin{action}
+			\call{chash:ring_increment/1} Retrieve the offset from one section to the next.
+		\end{action}
+		\call{chashbin:itr_pop/2} Iterate over all nodes and receive the list in order of iteration to build the preference list.
+	\end{action}
+\end{actionbox}
+
+\section{Navigate via riak\_core\_apl}
+
+\begin{actionbox}{Get APL Locally}{get_apl_locally}
+	\begin{action}
+		\call{riak_core_apl:get_apl/3} retrieves the active preference list containing nodes that are up.
+		This function does not need a structure as an argument and uses the local binary chash internally.
+		\begin{action}
+			\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the binary chash structure.
+			\call{riak_core_node_watcher:nodes/1} Retrieve all nodes that are up at the moment.
+			\call[\actiontag{action}]{Get APL fom Binary} Compute the active preference list from up nodes and binary chash.
+			See Action \ref{action:get_apl_from_binary}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get APL from Ring}{get_apl_from_ring}
+	\begin{action}
+		\call{riak_core_apl:get_apl/4} Compute the active preference list from a ring and up nodes.
+		\begin{action}
+			\call[\actiontag{action}]{Get Annotated APL from Ring} Compute the active preference list from a ring containing annotations of primary and fallback nodes.
+			See Action \ref{action:get_annotated_apl_from_ring}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Annotated APL from Ring}{get_annotated_apl_from_ring}
+	\begin{action}
+		\call{get_apl_ann/4} Compute the active preference list from a ring and up nodes where nodes are annotated with primary or fallback.
+		\begin{action}
+			\call{riak_core_ring:preflist} Retrieve the preference list containing all nodes.
+			\begin{action}
+				\call{chash:successors/2} Retrieve all node entries beginning at the given key wrapping around the ring.
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Annotated APL Locally}{get_annotated_apl_locally}
+	\begin{action}
+		\call{riak_core_apl:get_apl_ann/3} Compute the active preference list without needing a structure as the input.
+		Internally the local binary chash is used.
+		\begin{action}
+			\call{riak_core_ring_manager:get_chash_bin/0} Retrieve the local binary chash structure.
+			\call[\actiontag{action}]{Get Annotated APL from Binary} Compute the active preference list which contains primary and fallback annotations.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Primary APL Locally}{get_primary_apl_locally}
+	\begin{action}
+		\call{riak_core_apl:get_primary_apl/3} Compute the active preference list only containing primary nodes.
+		\begin{action}
+			\call{riak_core_ring_manager:get_chash_bin/0} Receive the binary chash structure.
+			\call{riak_core_node_watcher:nodes/1} Receive nodes that are currently up.
+			\call[\actiontag{action}]{Get Primary APL from Binary} Compute the active preference list from a binary chash.
+			See Action \ref{action:get_primary_apl_from_binary}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Primary APL from Ring}{get_primary_apl_from_ring}
+	\begin{action}
+		\call{riak_core_apl:get_primary_apl/4} Compute the active preference list only containing primary nodes from the ring and up nodes.
+		\begin{action}
+			\call{riak_core_ring:preflist/2} Retrieve the preference list containing all nodes.
+			\begin{action}
+				\call{chash:successors/2} Retrieve all node entries beginning at the given key wrapping around the ring.
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Primary APL from Binary}{get_primary_apl_from_binary}
+	\begin{action}
+		\call{riak_core_apl:get_primary_apl_chbin/4} Compute the active preference list only containing primary nodes from the binary chash and upnodes.
+		\begin{action}
+			\call{chashbin:iterator/2} Create an iterator starting at a given position.
+			\begin{action}
+				\call{chash:ring_increment/1} Receive the offset from one section to another.
+			\end{action}
+			\call{chashbin:itr_pop/2} Iterate over all nodes and receive the list in order of iteration.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get APL from Binary}{get_apl_from_binary}
+	\begin{action}
+		\call{riak_core_apl:get_apl_chbin/4} Compute the active preference list from a binary chash and up nodes.
+		\begin{action}
+			\call[\actiontag{action}]{Get Annotated APL from Binary} Compute the active  preference list which contains nodes annotated with primary or fallback.
+			See Action \ref{action:get_annotated_apl_from_binary}.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Get Annotated APL from Binary}{get_annotated_apl_from_binary}
+	\begin{action}
+		\call{riak_core_apl:get_apl_ann_chbin/4} Compute the preference list from a binary chash with nodes marked as primary or fallback.
+		\begin{action}
+			\call{chashbin:iterator/2} Create an iterator starting at a given position.
+			\begin{action}
+				\call{chash:ring_increment/1} Receive the offset from one section to another.
+			\end{action}
+			\call{chashbin:itr_pop/2} Iterate over all nodes and receive the list in order of iteration.
+			\call{chashbin:itr_value/1} Receive the value at the current iterator position.
+			\call{chashbin:itr_next/1} Advance the iterator by one position.
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\section{Resize Ring}
+\begin{actionbox}{Resize Ring}{resize_ring}
+	\begin{action}
+		\call{riak_core_claimant:resize_ring/1} Stage a resize for the current ring.
+		\begin{action}
+			\call{riak_core_ring_manager:get_raw_ring/0} Retrieve the current ring.
+		\end{action}
+		\call[\actiontag{action}]{Plan} Generate the provisional next ring after the resize operation. See Action \ref{action:plan}.
+		\call[\actiontag{action}]{Commit} Commit all staged changes and install the resized ring. See Action \ref{action:commit}.
+	\end{action}
+\end{actionbox}
+
+\section{Handoff}
+\begin{actionbox}{Handoff}{handoff}
+	\begin{action}
+		\call[\actiontag{msg}]{management_tick -> riak_core_vnode_manager} When a management tick message is received, the vnode manager executes its periodical tasks.
+		In the following only tasks relevant to the handoff are considered.
+		\begin{action}
+			\call{riak_core_ring_manager:get_ring_id/0} Retrieve the identifier of the currently installed ring.
+			\call{riak_core_ring_manager:get_raw_ring_chashbin/0} Retrieve the binary chash structure of the currently installed ring.
+			\call{riak_core:vnode_modules/0} Retrieve all modules registered as vnodes.
+			\call{riak_core_ring:pending_changes/1} Retrieve all owner changes scheduled on the ring.
+			\call{riak_core_ring:is_resizing/1} Check if the ring is undergoing a resizing operation.
+			\call{riak_core_vnode:trigger_handoff} Start the handoff process for vnodes having outgoing handoffs scheduled.
+			\begin{action}
+				\call{riak_core_ring_manager:get_my_ring/0} Retrieve the locally installed ring.
+				\call{riak_core_ring:is_resizing/1} Check if the ring is resizing.
+				\call{riak_core_ring:is_primary/2} Check if the handed off index is a primary or redundancy storage.
+				\call{VNodeModule:handoff_starting/4} Check in the implementation of the vnode behavior if the handoff can start.
+				\call{riak_core_handoff_manager:add_outbound/7} Add an outbound handoff to the list of ongoing handoffs.
+				\begin{action}
+					\call[\actiontag{action}]{Send Handoff} Send data owned by the vnode on the handed off index to the new owner. See Action \ref{action:send_handoff}.
+				\end{action}
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}
+
+\begin{actionbox}{Send Handoff}{send_handoff}
+	\begin{action}
+		\call{riak_core_handoff_manager:send_handoff/8} Prepare and send data from one node to another.
+		\begin{action}
+			\call{riak_core_handoff_sender_sup:start_sender/5} Start a process to send the handoff data.
+			\begin{action}
+				\call{raik_core_handoff_sender:start_link/0} Starts the handoff sender.
+				On start, all ports and timeouts are set and tested.
+				\begin{action}
+					\call{riak_core_vnode_master:sync_command/4} Sets up the synchronized call to a vnode with the fold request.
+				\end{action}
+			\end{action}
+		\end{action}
+	\end{action}
+\end{actionbox}

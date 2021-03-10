@@ -1,0 +1,31 @@
+%!TEX root=../master_thesis.tex
+
+\clearpage
+\begin{minipage}{\linewidth}
+\section*{Abstract}
+\begin{abstract}
+Riak Core is a framework to build distributed systems based on the Dynamo architecture.
+It uses Consistent Hashing to map keys to nodes as well as to determine the placement of replicas of those keys.
+The usage of Consistent Hashing brings some drawbacks like a fixed ring size leading to reduced scalability.
+An alternative approach to map keys to nodes is Random Slicing.
+
+We analyze the current state of Riak Core Lite and how Random Slicing can be integrated.
+Based on those findings we implement a prototype variant of Riak Core Lite with Random Slicing and conduct an evaluation via benchmarks to compare the variants.
+We show that even in a prototype implementation Random Slicing performs on the same levels as Consistent Hashing.
+As this shows that Random Slicing is a promising alternative to Consistent Hashing we propose further changes to Riak Core Lite that can raise the performance above its current levels.
+\end{abstract}
+\begin{otherlanguage}{ngerman}
+\section*{Zusammenfassung}
+\begin{abstract}
+Riak Core ist ein Framework zur Erstellung verteilter Systeme, die auf der Dynamo Architektur basieren.
+Es benutzt Consistent Hashing, um sowohl Schlüssel auf Knoten abzubilden, als auch zur Bestimmung der Replikationsplatzierung dieser Knoten.
+Die Nutzung von Consistent Hashing bringt einige Nachteile wie eine feste Ringgröße mit sich, die zu reduzierter Skalierbarkeit führen.
+Eine alternative Methode, um Schlüssel auf Knoten abzubilden ist Random Slicing.
+
+Wir analysieren Riak Core auf dem momentanen Stand und wie Random Slicing integriert werden kann.
+Auf der Grundlage dieser Ergebnisse implementieren wir eine Prototypvariante von Riak Core Lite mit Random Slicing und führen eine Auswertung mithilfe von Benchmarks durch, um die Varianten zu vergleichen.
+Wir zeigen, dass schon in einer Prototyp-Implementierung Random Slicing Leistungen auf dem gleichen Niveau wie Consistent Hashing zeigt.
+Da dies zeigt, dass Random Slicing eine vielversprechende Alternative zu Consistent Hashing ist, schlagen wir weitere Änderungen an Riak Core Lite vor, die die Leistung über das momentane Level heben können.
+\end{abstract}
+\end{otherlanguage}
+\end{minipage}

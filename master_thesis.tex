@@ -1,0 +1,69 @@
+% arara: pdflatex: { interaction: nonstopmode }
+% arara: biber
+% arara: pdflatex: { interaction: nonstopmode }
+% arara: pdflatex: { interaction: nonstopmode }
+% arara: clean: { extensions: [ log, aux, bbl, bcf, bib.bak, blg, lof, run.xml, toc ] }
+
+\include{content/00_preamble}
+
+\begin{document}
+
+\pagenumbering{gobble}
+
+\subject{Master's Thesis}
+\title{\MyTitle}
+\subtitle{\GermanTitle}
+\author{Pascal Grosch\\\url{p_grosch14@cs.uni-kl.de}}
+\publishers{TU Kaiserslautern\\Department of Computer Science\\Prof. Dr. Ralf Hinze\\Dr. rer. nat. Annette Bieniusa\\Albert Schimpf, M.Sc.}
+
+\maketitle
+
+\include{content/01_erklaerung}
+
+\tableofcontents
+
+\chapter*{Acronyms}
+\begin{acronym}
+\acro{ADRS}{Adaptive Data Replication Strategy}
+\acro{RCL}{Riak Core Lite}
+\acro{RPS}{replication placement strategy}
+\acro{RS}{Random Slicing}
+\end{acronym}
+
+\glsaddall
+\printnoidxglossary[nonumberlist]
+
+\include{content/02_abstract}
+
+\pagenumbering{arabic}
+
+\include{content/03_Introduction}
+
+\include{content/04_Related_Work}
+
+\include{content/05_Background}
+
+\include{content/06_Random_Slicing}
+
+\include{content/07_Riak_Core_and_Random_Slicing}
+
+\include{content/08_Evaluation}
+
+\include{content/09_Future_Work}
+
+\include{content/10_Conclusion}
+
+\printbibliography
+
+
+\listoffigures
+
+\appendix
+
+%\include{content/11_Components}
+
+\include{content/12_Actions}
+
+\include{content/13_Evaluation_Data}
+
+\end{document}

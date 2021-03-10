@@ -1,0 +1,69 @@
+%!TEX root=../master_thesis.tex
+\chapter{Introduction}
+As cloud computing\cite{Wang2010} becomes more and more prevalent in a wide array of domains, the reliance on the quality of service guarantees for relevant tasks in many industries is growing.
+Typical tasks for a cloud include storing data as a scalable storage or solving a task remotely and delivering the results.
+Obviously, a cloud still performs its tasks on hardware.
+However, since a core quality of cloud systems is their scalability, they are often implemented as distributed systems with a dynamic cluster configuration.
+For example a company uses a cloud system both for storing its data as well as computing the results of data processing.
+In this scenario the storage requirements may grow over time and therefore the cloud storage needs to be scaled.
+Another aspect is that while the requirements on processing power for day-to-day data processing might not fluctuate, processing large amounts of data for an annual report represents a spike in necessary computing power.
+If the cloud provider wants to guarantee a fast processing time, the cloud needs to be scaled out.
+To this end, more machines are added to the cloud configuration and the incoming tasks are distributed to all machines.
+
+One problem with distributed computing is how to distribute data or tasks on a number of nodes such that each node has approximately the same load to optimize the scalability.
+If this problem is not handled properly, some nodes will be overloaded while others are running idle.
+This leads to a worse response time and makes it unlikely that adding more machines will fix the problem.
+One approach is using a central load balancer\cite{Kansal2012} that tracks incoming requests and fairly distributes them to all nodes.
+However, a decentralized approach to solve this problem in a pure peer-to-peer setting does also exist.
+Developed by Amazon, the Dynamo\cite{DeCandia2007} architecture is used as the backend for the Dynamo DB.
+It uses a variant of Consistent Hashing\cite{Karger1997} to balance the load on each node in the cluster.
+In a simplified view, Dynamo places the nodes on a ring representing a hash space and uses hashing to map keys to nodes.
+We describe the workings of Dynamo in more detail in \cref{sec:dynamo}.
+The Riak key-value store and Riak Core are open-source implementations of Dynamo DB and Dynamo respectively.
+
+One of Riak's former developers, Scott Fritchie, identifies some problems with the implementation of Consintent Hashing in Riak Core\cite{Fritchie2018}.
+He proposes a different algorithm called \ac{RS}\cite{Miranda2014} as an alternative data partitioning algorithm.
+The goal of this thesis is to replace the existing Consistent Hashing implementation with an implementation of \ac{RS}.
+Unlike Consistent Hashing, \ac{RS} does not allow for an inherent \ac{RPS} strategy.
+Therefore an important part of this thesis is the development of possible \acp{RPS}.
+We will conduct an evaluation on the performance differences between the two variants and reason about the advantages of \ac{RS} over Consistent Hashing in practice.
+
+\section{Riak Core}
+\label{sec:riak_core}
+Riak\cite{Basho2021} was developed by Basho Technologies as an open source implementation of the Dynamo architecture\cite{DeCandia2007}.
+The initial Riak key-value store is a distributed, decentralized NoSQL database on which nodes form a cluster and communicate with each other.
+From the backend of this database the Riak Core\cite{BashoCore2021} framework was developed.
+It enables to build distributed systems while already taking responsibility for some core tasks.
+The most notable capacity is the automatic formation of nodes to a cluster and keeping nodes updated on the cluster state\cite{Riak2011}.
+It also allows to distribute workload to the nodes in a fair manner.
+To this end it uses a variant of Consistent Hashing\cite{Karger1997} like the one Dynamo uses.
+Instead of directly storing key-value pairs like its database origin it uses the hashing of the key to compute a number of owner nodes of that key.
+This can for instance also be used to distribute tasks assigned to the key to a number of nodes.
+In this thesis we use a more simplified and streamlined version of Riak Core called \ac{RCL}.
+We give a more detailed overview in \cref{sec:riak_core_lite}.
+
+\section{Scope}
+A production-ready integration of \ac{RS} with Riak Core requires a detailed analysis of the existing system.
+We need to list how each component is affected by the architectural decision of using Consistent Hashing as the partitioning and replication placement algorithm.
+From this analysis we need to reevaluate design decisions under the aspect that we use \ac{RS} instead of Consistent Hashing.
+The new design decision need to be implemented in a way that the system functionality and performance are not noticeably negatively impacted.
+
+However this process of redesigning the system can not be achieved within the time constraints of this thesis.
+Therefore we decide to create a prototype implementation as a proof of concept from the existing system with only minor design decisions.
+From this prototype we will draw conclusions on whether \ac{RS} is a feasible approach of improving Riak Core.
+To this end we analyze the most basic functionalities and workflows of Riak Core and constrain the redesign on the parts of the system that are relevant to them.
+We evaluate the adapted system on the basis of known fixable problems and improvements and try to give a reasoning on how \ac{RS} can be a better partitioning and replica placement strategy than Consistent Hashing when the system is properly redesigned.
+
+\section{Outline}
+First we will present work related to this thesis.
+This includes the original version of Consistent Hashing\cite{Karger1997} as an example for data partitioning algorithms.
+In the realm of \acp{RPS} we present the Adaptive Data Replication Strategy\cite{Mansouri2016} representing approaches using current system metrics, Chain Replication\cite{Renesse2004} as an example for approaches using virtual nodes, and Redundant Share\cite{Brinkmann2007} which is based on a mathematical model.
+We close the related work chapter with an overview of different decentralized distributed key-value stores, namely Dynamo\cite{DeCandia2007}, Cassandra\cite{Cassandra2016}, and Hibari DB\cite{Hibari2015}.
+In the following background chapter we first present \ac{RCL}'s implementation of Consistent Hashing before describing the structure and functionalities of \ac{RCL} in detail.
+After this we formally introduce the concept of \ac{RS} and present some simple \acp{RPS} to enable it to replace Consistent Hashing.
+The main chapter describes how the structure and functionality of \ac{RCL} is impacted when replacing its Consistent Hashing algorithm with \ac{RS}.
+In the evaluation chapter we present our hypotheses on the impact of \ac{RS} on \ac{RCL} and how we plan to test them.
+We also present the data from the evaluation and show how the hypotheses are either supported or contradicted.
+As the scope of this thesis does not include a full redesign of the existing \ac{RCL} framework but rather a prototype implementation as a proof of concept, there are many issues left open and possible improvements.
+We address those issues in the future work chapter and present some abstract or concrete ideas on how to approach these problems.
+Closing the thesis we give an overview on what we achieved and how feasible we assume the integration of \ac{RS} with \ac{RCL} is based on the prototype developed in the scope of this thesis.

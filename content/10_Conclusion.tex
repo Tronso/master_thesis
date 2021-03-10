@@ -1,0 +1,20 @@
+%!TEX root=../master_thesis.tex
+\chapter{Conclusion}
+In this thesis we gave an overview on the inner workings of \ac{RCL} and its Consistent Hashing implementation.
+Inspired by Fritchie's idea to replace the Consistent Hashing algorithm with \ac{RS} we also presented how \ac{RS} works.
+Seeing that Consistent Hashing directly allows for a simple and quick \ac{RPS} we also presented a choice of simple \acp{RPS}.
+We then implemented a prototype version of \ac{RCL} with \ac{RS} as its data partitioning algorithm and gave an overview of how the structure and some workflows of \ac{RCL} had to be changed.
+To compare both versions of \ac{RCL} we designed configurations to illustrate the strengths and weaknesses of both systems.
+With those configuration we ran benchmarks to retrieve data.
+From that data we created a first impression of how \ac{RS} works with \ac{RCL} and what the big problems are with the current implementation.
+
+This whole process has shown that the choice of the partitioning algorithm in \ac{RCL} is rather an architectural choice than a design one as large parts of the system depend on the inner workings of this algorithm.
+In turn, simply replacing the partitioning component and redesigning components directly connected to it is not enough.
+One has to rather go back to the architectural phase and reevaluate the design decisions depending on the chosen partitioning algorithm and its requirements, guarantees and other attributes.
+Considering \ac{RS} was adopted for \ac{RCL} in a prototype manner without a full-scope design process the evaluation results look promising.
+For the tested aspects it produced metrics that were at most slightly worse than \ac{RCL} with Consistent Hashing.
+Especially problems during handoff periods and with load balancing can be clearly overcome by a more refined development process in the future.
+Overall, we showed that \ac{RS} works as a partitioning algorithm, though it is reliant on its actual gap collection algorithm and replica placement strategy.
+We could not show all of the theoretical improvements listed by Fritchie, especially the improvements of the handoff overhead.
+However, this was mostly caused by the prototype implementation and missing metrics in the evaluation.
+We strongly believe that with a full redesign of affected components and considering our proposed future work \ac{RS} can improve \ac{RCL}'s overall performance and especially its scalability and adaptability in more dynamic clusters.

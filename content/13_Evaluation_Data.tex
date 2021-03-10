@@ -1,0 +1,30 @@
+%!TEX root=../master_thesis.tex
+\chapter{Evaluation Data}
+\label{chp:evaluation_data}
+
+\evaluation{ConsistentHashing}{C0}
+\evaluation{ConsistentHashing}{C1}
+\evaluation{ConsistentHashing}{C2}
+\evaluation{ConsistentHashing}{dynamic}
+
+\evaluation{RandomSlicing_Jumping}{C0}
+\evaluation{RandomSlicing_Jumping}{C1}
+\evaluation{RandomSlicing_Jumping}{C2}
+\evaluation{RandomSlicing_Jumping}{dynamic}
+
+\evaluation{RandomSlicing_Random}{C0}
+\evaluation{RandomSlicing_Random}{C1}
+\evaluation{RandomSlicing_Random}{C2}
+\evaluation{RandomSlicing_Random}{dynamic}
+
+\evaluation{RandomSlicing_Rotation}{C0}
+\evaluation{RandomSlicing_Rotation}{C1}
+\evaluation{RandomSlicing_Rotation}{C2}
+\evaluation{RandomSlicing_Rotation}{dynamic}
+
+\begin{table}
+\tiny
+\csvautotabular[/csv/respect underscore=true]{./EvaluationData/load_balance.csv}
+\caption[Load Balance]{Load Balance}
+\label{tab:load_balance}
+\end{table}

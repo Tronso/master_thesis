@@ -1,0 +1,22 @@
+{'rclref1@192.168.0.139',
+    {keys,115939}, 
+    {puts,347491},
+    {gets,348280},
+    {deletes,0}}
+{'rclref2@192.168.0.139',
+    {keys,91227},
+    {puts,42302},
+    {gets,42325},
+    {deletes,0}}
+{'rclref3@192.168.0.139',
+    {keys,108757},
+    {puts,38074},
+    {gets,38109},
+    {deletes,0}}
+{'rclref4@192.168.0.139',
+    {keys,258551}, 
+    {puts,31278},
+    {gets,31531},
+    {deletes,0}}
+
+Total Errors: [{{get_own_puts,get_own_puts},5}]

@@ -1,0 +1,61 @@
+%!TEX root=../master_thesis.tex
+\chapter{Future Work}
+In this chapter we present future changes to the system that we see as necessary to either improve the system performance or make use of all features of \ac{RS}.
+We will list each problem we identify in the current state of the system and then present potential solutions if we already thought of one.
+
+\section{Improve the Gap Collection Algorithm}
+The system currently uses a simple greedy gap collection algorithm.
+As Miranda et al. show in their evaluation of gap collection algorithms\cite{Miranda2014}, there are alternatives that produce way less gaps without much computation overhead which in turn reduces lookup time.
+Especially the large difference for a low number of nodes has a strong impact on systems using Riak Core as they are not expected to scale to a high number of nodes.
+Since Riak Core is conceptualized for systems with infrequent cluster changes the lower lookup time will improve the system's throughput.
+
+Another problem we noticed with the gap collection algorithm during the evaluation are some minuscule sections that are results from rounding errors when scaling the weight of the nodes.
+As those sections also increase lookup time it is necessary to prevent their creation.
+One possible solution is to implement a guard that prevents the creation of sections below a given size which would then also prevent a future feature of creating custom sections for special use cases.
+Another solution is to use rational numbers to scale the weights which has a higher memory usage but also higher precision.
+
+
+\section{Reintegrate Handoff Optimizations}
+\ac{RCL} with Consistent Hashing differentiates between different kinds of handoffs to optimize other system procedures and prevent erroneous handoff operations that need to be fixed later.
+For example there are different handoff procedures for a simple cluster change and a resize change.
+During the proof-of-concept integration of \ac{RS} with \ac{RCL} only a basic handoff workflow was realized.
+There are most likely still many corner-cases of cluster changes that could lead to either a failure during handoff or a bad performance during handoff.
+As in principle all cluster changes with \ac{RS} lead to a resize handoff the next step is to closely look at how resizing impacts \ac{RCL} with Consistent Hashing and if those corner cases may work with \ac{RS}.
+If this is the one can simply adapt the resize handoff for \ac{RS}.
+Otherwise the handoff workflow needs to be redesigned completely to handle the new cases brought in by \ac{RS}.
+
+
+\section{Develop a More Refined \ac{RPS}}
+To offer the same functionality with \ac{RS} as with Consistent Hashing, we need to develop a \ac{RPS}.
+We presented three simple strategies, Random Replication, Ring Jumping, and Ring Rotation.
+The evaluation has shown that none of these is better than replication with Consistent Hashing and show weaknesses when the cluster changes.
+Therefore a simple \ac{RPS} may not be feasible with \ac{RS} a more sophisticated approach needs to be developed.
+Fritchie\cite{Fritchie2018} proposed to include a level of indirection and map clusters of nodes with a replication strategy to the sections of the ring.
+However this then creates the problem of forming these clusters and balancing them, unless we change Riak Core's functionality and leave the replication completely to the implementing system.
+
+
+\section{Integrate the Replication Placement Strategy with the Preference List Creation}
+With Consistent Hashing a complete preference list consisting of all nodes starting at the one owning the key is computed and then split into primary and fallback nodes.
+The final preference list is then created by filtering the primary nodes by the ones that are up and inserting fallback nodes when necessary.
+The current implementation of the preference list creation with \ac{RS} uses the \ac{RPS} to compute a complete preference list and afterwards filters it in the same way as with Consistent Hashing.
+As in most cases not all nodes in the complete preference list are needed calculating the complete preference list creates an overhead.
+This overhead is non-existent with consistent hashing as the preference list is simply the underlying data structure of the ring split at the initial node.
+With the \acp{RPS} we presented the overhead potentially grows with each additional node that is needed to be appended to the preference list.
+Therefore we need to interlace the filtering of the preference list with its computation.
+An easy way to achieve this is to change the interface of the replication strategies to offer an iterator-like operation that only computes and returns the next entry of the list.
+Instead of filtering the complete preference list we can check the status of each node and poll more nodes if we need to use fallback nodes.
+
+
+\section{Support Heterogeneous Nodes}
+One of the strengths of \ac{RS} over Consistent Hashing is its native support of heterogeneous nodes.
+While Amazon's Dynamo implementation\cite{DeCandia2007} offers a support of heterogeneous nodes by assigning each node a different number of sections on the ring this approach can only approximate a balanced distribution of heterogeneous nodes.
+With \ac{RS} a more precise balancing of heterogeneous nodes can be achieved.
+Currently the support for weights assigned to nodes is implemented in the internal code of the ring component.
+However, there is no API to actually specify or change a node's weight.
+This seems to be a rather simple change to add a weight parameter to the join operation and implement a new update-weight operation and add it to the stage-plan-commit lifecycle.
+
+
+\section{Evaluate Higher Scalability}
+We only evaluated small cluster sizes with less than ten nodes as is typical for Riak Core applications.
+However, Miranda et al. introduce \ac{RS} as a solution for highly scalable replication\cite{Miranda2014}.
+Therefore it is interesting to see how in \ac{RCL} Consistent Hashing fares against \ac{RS} when scaling the cluster size to higher values and if it actually enables more use cases as there is no ring size to be set and changed by an admin.
